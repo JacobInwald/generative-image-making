@@ -108,13 +108,13 @@ class quad:
             if isinstance(getattr(self, attr_name), tuple):
                 coeff = r.random()
                 attr_value = tuple(
-                    coeff * getattr(self, attr_name)[i] + (1 - coeff) * getattr(other, attr_name)[i]
+                    int(coeff * getattr(self, attr_name)[i] + (1 - coeff) * getattr(other, attr_name)[i])
                     for i in range(len(getattr(self, attr_name)))
                 )
                 setattr(child, attr_name, attr_value)
             else:
                 coeff = r.random()
-                attr_value = coeff * getattr(self, attr_name) + (1 - coeff) * getattr(other, attr_name)
+                attr_value = int(coeff * getattr(self, attr_name) + (1 - coeff) * getattr(other, attr_name))
                 setattr(child, attr_name, attr_value)
         return child
 
@@ -147,4 +147,22 @@ class quad:
             self.bl = d[2]
             self.br = d[3]
             self.c = d[4]
+    
+    
 
+    def gen_rand_quad(w, h, brush_size):
+        tryagain = True
+        while tryagain:
+            tl = (r.randint(0, w-1), r.randint(0, h-1))
+            tr = (r.randint(tl[0], w-1), r.randint(0, h-1))
+            top = tr[1] if tr[1] > tl[1] else tl[1]
+            bl = (r.randint(0, w-1), r.randint(top, h-1))
+            br = (r.randint(bl[0], w-1), r.randint(top, h-1))
+            mask = np.zeros((h, w), dtype=np.uint8)
+            poly_pts = np.array([tl,tr,bl,br], dtype=np.int32)
+            cv2.fillPoly(mask, [poly_pts], color=1)
+            tryagain = mask.sum() < brush_size
+            
+        return quad(tl, tr, bl, br,
+                    (r.randint(0, 255), r.randint(0, 255), r.randint(0, 255)),
+                     r.randint(0,255))

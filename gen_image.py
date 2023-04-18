@@ -6,20 +6,14 @@ def gen_rand_point(width, height):
 
 class quad_manager:
 
-    def __init__(self, n, tgt, postculln):
+    def __init__(self, n, tgt, brushsize):
         w = tgt.width
         h = tgt.height
         self.tgt = tgt
 
-        self.generation = {quad(gen_rand_point(w, h),
-                           gen_rand_point(w, h),
-                           gen_rand_point(w, h),
-                           gen_rand_point(w, h),
-                           (r.randint(0, 255), r.randint(0, 255), r.randint(0, 255)),
-                           r.randint(0,255)):0
+        self.generation = {quad.gen_rand_quad(w,h,brushsize):0
                         for i in range(n)}
         self.n = n
-        self.postculln = postculln
     
 
     def next_gen(self):
@@ -46,7 +40,7 @@ class quad_manager:
 
 
     def find_winner(self, n: int, cur: img):
-        c = canvas('winner', cur.width, cur.height)
+        # c = canvas('winner', cur.width, cur.height)
         for i in range(n):
             self.score_gen(cur)
             # c.shapes = [list(self.generation.keys())[0]]
@@ -58,15 +52,15 @@ class quad_manager:
         return list(self.generation.keys())[0]
 
 
-def run_n_generations(num_quads, gen_size, gen_iter, gen_cull_size, tgt_path="test.png", can="canvas"):
+def run_n_generations(num_quads, gen_size, gen_iter, brushsize=10, tgt_path="test.png", can="canvas"):
     target = img(tgt_path, from_img=True)
-    c = canvas('canvas',target.width,target.height)
+    c = canvas(can,target.width,target.height)
     cur = c.to_img()
     for i in range(num_quads):
-        generation = quad_manager(gen_size, target, gen_cull_size)
+        generation = quad_manager(gen_size, target, brushsize)
         q = generation.find_winner(gen_iter, cur)
         c.shapes.append(q)
         cur = c.to_img()
     c.save()
 
-run_n_generations(1000, 500, 20, 10, "george.png")
+run_n_generations(1000, 500, 20, brushsize=250, tgt_path="george.png", can='canv2')

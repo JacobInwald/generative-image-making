@@ -22,14 +22,21 @@ class img:
         self.pixel_map = np.array(img_rgba)
     
     def pix_diff(self, pxlmap, subsample=None):
-
-        if subsample is not None:
-            pxlmap = pxlmap[::subsample, ::subsample, :]
-            subpxlmap = self.pixel_map[::subsample, ::subsample, :]
-            return 1 - ssim(pxlmap, subpxlmap, multichannel=True, channel_axis=2)
-        else:
-            return 1 - ssim(pxlmap, self.pixel_map, multichannel=True, channel_axis=2)
     
+        if subsample is not None:
+            # Subsample the pixel maps
+            pxlmap = pxlmap[::subsample, ::subsample, :]
+            this_pxlmap = self.pixel_map[::subsample, ::subsample, :]
+        else:
+            this_pxlmap = self.pixel_map
+        # Compute the mean squared error
+        mse = np.mean((pxlmap - this_pxlmap) ** 2)
+        
+        # Compute the peak signal-to-noise ratio
+        psnr = 10 * np.log10(255 ** 2 / mse)
+        return psnr
+
+
     def save(self):
         Image.fromarray(self.pixel_map).save(self.path)
 
@@ -102,19 +109,19 @@ class quad:
                     self.c+(r.random()*std, r.random()*std, r.random()*std),
                     self.alpha+r.random()*std)
     
-    def combine(self, other):
-        child = quad()
+    def combine(self, other, noise=10):
+        child = quad(self.tl,self.tr,self.bl,self.br, self.c, self.alpha)
         for attr_name in ['tl', 'tr', 'bl', 'br', 'c', 'alpha']:
             if isinstance(getattr(self, attr_name), tuple):
                 coeff = r.random()
                 attr_value = tuple(
-                    int(coeff * getattr(self, attr_name)[i] + (1 - coeff) * getattr(other, attr_name)[i])
+                    int(coeff * getattr(self, attr_name)[i] + (1 - coeff) * getattr(other, attr_name)[i] + noise*r.gauss(0, 1))
                     for i in range(len(getattr(self, attr_name)))
                 )
                 setattr(child, attr_name, attr_value)
             else:
                 coeff = r.random()
-                attr_value = int(coeff * getattr(self, attr_name) + (1 - coeff) * getattr(other, attr_name))
+                attr_value = int(coeff * getattr(self, attr_name) + (1 - coeff) * getattr(other, attr_name) + noise*r.gauss(0, 1))
                 setattr(child, attr_name, attr_value)
         return child
 
@@ -131,7 +138,7 @@ class quad:
         with open(file, "r") as f:
             d = f.readlines()
             d = d[index*6:(index+1)*6]
-            self.alpha = int(d[-1].strip()//1)
+            self.alpha = int(d[-1].strip())
             d = d[:-1]
 
             data = []
@@ -163,6 +170,53 @@ class quad:
             cv2.fillPoly(mask, [poly_pts], color=1)
             tryagain = mask.sum() < brush_size
             
+        return quad(tl, tr, bl, br,
+                    (r.randint(0, 255), r.randint(0, 255), r.randint(0, 255)),
+                     r.randint(0,255))
+    
+    def gen_rand_quad2(w, h, brush_size):
+        while True:
+            # generate four random points
+            points = [(int(r.uniform(0, w-1)), int(r.uniform(0, h-1))) for _ in range(4)]
+            
+            # calculate the area of the shape defined by the points
+            area = 0.5 * abs((points[0][0] * points[1][1] + points[1][0] * points[2][1] +
+                            points[2][0] * points[3][1] + points[3][0] * points[0][1]) -
+                            (points[1][0] * points[0][1] + points[2][0] * points[1][1] +
+                            points[3][0] * points[2][1] + points[0][0] * points[3][1]))
+            
+            # calculate the aspect ratio of the bounding box
+            x_coords = [point[0] for point in points]
+            y_coords = [point[1] for point in points]
+            bounding_box_aspect_ratio = 1000 if max(y_coords) == min(y_coords) else (max(x_coords) - min(x_coords)) / (max(y_coords) - min(y_coords))
+            
+            # check if the area and aspect ratio meet the requirements
+            if area >= brush_size and \
+                min(bounding_box_aspect_ratio,
+                     1/bounding_box_aspect_ratio) >= 1/3:
+                return quad(points[0],
+                            points[1],
+                            points[2],
+                            points[3],
+                            (r.randint(0, 255), r.randint(0, 255), r.randint(0, 255)),
+                            r.randint(0,255))
+            
+
+    def gen_rand_quad3(w, h, brush_size):
+
+        hyp = np.sqrt(brush_size)+r.uniform(-1,1)*3
+
+        tl = (int(r.uniform(hyp,w-1)), int(r.uniform(hyp,h-1)))
+        alpha = np.deg2rad(r.uniform(-10,50))
+        tr = (int(tl[0]+np.cos(alpha)*hyp), int(tl[1]+np.sin(alpha)*hyp))
+        beta = np.deg2rad(r.uniform(-10,50))
+        br = (int(tr[0]+np.sin(beta)*hyp), int(tr[1]+np.cos(beta)*hyp))
+        gamma = np.deg2rad(r.uniform(0,70))
+        bl = (int(br[0]-np.cos(gamma)*hyp), int(br[1]+np.sin(gamma)*hyp))
+        q = quad(tl, tr, bl, br,
+                    (r.randint(0, 255), r.randint(0, 255), r.randint(0, 255)),
+                     r.randint(0,255))
+        # Image.fromarray(q.draw(img(w=w,h=h))).show()
         return quad(tl, tr, bl, br,
                     (r.randint(0, 255), r.randint(0, 255), r.randint(0, 255)),
                      r.randint(0,255))

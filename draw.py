@@ -4,18 +4,20 @@ import numpy as np
 import random as r
 import cv2
 import colorsys
+from skimage.metrics import structural_similarity as ssim
 
 def random_rgb():
     hue = r.uniform(0.0, 1.0)
     saturation = r.uniform(0.4, 1.0)
     value = r.uniform(0.4, 1.0)
+    a = r.randint(1,255)
 
     rd, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
     rd = max(int(rd * 255), 1)
     g = max(int(g * 255), 1)
     b = max(int(b * 255), 1)
 
-    return (rd, g, b)
+    return (rd, g, b, a)
 
 
 
@@ -36,19 +38,23 @@ class img:
         self.pixel_map = np.array(img_rgba)
     
     def pix_diff(self, pxlmap, subsample=None):
-    
+        pxlmap = pxlmap[:, :, :3]
+        this_pxlmap = self.pixel_map[:, :, :3]
         if subsample is not None:
             # Subsample the pixel maps
             pxlmap = pxlmap[::subsample, ::subsample, :]
-            this_pxlmap = self.pixel_map[::subsample, ::subsample, :]
-        else:
-            this_pxlmap = self.pixel_map
+            this_pxlmap = this_pxlmap[::subsample, ::subsample, :]
+
         # Compute the mean squared error
         mse = np.mean((pxlmap - this_pxlmap) ** 2)
         
-        # Compute the peak signal-to-noise ratio
+        # # Compute the peak signal-to-noise ratio
         psnr = 10 * np.log10(255 ** 2 / mse)
         return psnr
+    
+
+    def save(self):
+         Image.fromarray(self.pixel_map).save(self.path)
 
 
     def save(self):
@@ -85,60 +91,47 @@ class canvas:
         return i
     
 
-
 class quad:
 
-    def __init__(self, tl: Tuple[int, int] = (0,0),
-                        tr: Tuple[int, int] = (0,0),
-                        bl: Tuple[int, int] = (0,0),
-                        br: Tuple[int, int] = (0,0),
-                        c: Tuple[int,int,int] = (0,0,0),
-                        alpha: int = 0):
-        self.tl = tl
-        self.tr = tr
-        self.bl = bl
-        self.br = br
+    def __init__(self,  pos: Tuple[int,int] = (0,0),
+                        alpha: float = 0,
+                        beta: float = 0,
+                        gamma: float = 0,
+                        hyp: int = 1,
+                        c: Tuple[int,int,int,int] = (1,1,1,1)):
         self.c = c
         self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        self.hyp = hyp
+        self.tl = pos
+        self.tr = (int(self.tl[0]+np.cos(alpha)*hyp), int(self.tl[1]+np.sin(alpha)*hyp))
+        self.br = (int(self.tr[0]+np.sin(beta)*hyp), int(self.tr[1]+np.cos(beta)*hyp))
+        self.bl = (int(self.br[0]-np.cos(gamma)*hyp), int(self.br[1]+np.sin(gamma)*hyp))
+
 
     def draw(self, img: img):
-        r,g,b = self.c
-        a = self.alpha
-        colour = (r,g,b,a)
         img_arr = img.pixel_map
         points = [self.tl, self.tr, self.br, self.bl]
         mask = np.zeros((img.height, img.width), dtype=np.uint8)
         poly_pts = np.array(points, dtype=np.int32)
-        cv2.fillPoly(mask, [poly_pts], color=colour)
+        cv2.fillPoly(mask, [poly_pts], color=self.c)
 
         overlay = img_arr[mask > 0]
-        img_arr[mask > 0] = ((overlay + colour)/2).astype(np.uint8)
+        img_arr[mask > 0] = ((overlay + self.c)/2).astype(np.uint8)
         return img_arr
     
-    def create_child(self, std: int):
-        return quad(self.tl+(r.random()*std, r.random()*std),
-                    self.tr+(r.random()*std, r.random()*std),
-                    self.bl+(r.random()*std, r.random()*std),
-                    self.br+(r.random()*std, r.random()*std),
-                    self.c+(r.random()*std, r.random()*std, r.random()*std),
-                    self.alpha+r.random()*std)
-    
-    def combine(self, other, w, h, noise=0):
-        child = quad(self.tl,self.tr,self.bl,self.br, self.c, self.alpha)
-        for attr_name in ['tl', 'tr', 'bl', 'br', 'c', 'alpha']:
-            if isinstance(getattr(self, attr_name), tuple):
-                coeff = r.random()
-                attr_value = tuple(
-                    int(coeff * getattr(self, attr_name)[i] + (1 - coeff) * getattr(other, attr_name)[i] + noise*r.gauss(-1, 1))
-                    for i in range(len(getattr(self, attr_name)))
-                )
-                setattr(child, attr_name, attr_value)
-            else:
-                coeff = r.random()
-                attr_value = int(coeff * getattr(self, attr_name) + (1 - coeff) * getattr(other, attr_name) + noise*r.gauss(-1, 1))
-                setattr(child, attr_name, attr_value)
-        child.move_inbounds(w,h)
-        return child
+    def combine(self, other, noise=0):
+        coeff = r.uniform(0.25,0.75)
+        tl      = tuple( int(coeff * self.tl[i] + (1 - coeff) * other.tl[i] + noise*r.gauss(-1, 1))
+                            for i in range(len(self.tl)))
+        alpha   = max(min(coeff * self.alpha + (1 - coeff) * other.alpha + noise*r.gauss(-1, 1), 45), -45)
+        beta    = max(min(coeff * self.beta + (1 - coeff) * other.beta + noise*r.gauss(-1, 1), 45), -45)
+        gamma   = max(min(coeff * self.gamma + (1 - coeff) * other.gamma + noise*r.gauss(-1, 1), 45), -45)
+        hyp     = int(coeff * self.hyp + (1 - coeff) * other.hyp + noise*r.gauss(-1, 1))
+        c       = tuple( int(coeff * self.c[i] + (1 - coeff) * other.c[i] + noise*r.gauss(-1, 1))
+                    for i in range(len(self.c)))
+        return quad(tl,alpha,beta,gamma,hyp,c)
 
     def save(self, file):
         with open(file, "a") as f:
@@ -173,10 +166,6 @@ class quad:
     def move_inbounds(self, w, h):
         tl, tr, bl, br = self.tl, self.tr, self.bl, self.br
 
-        # Calculate the top-left and bottom-right corners of the bounding box
-        bb_tl = (0, 0)
-        bb_br = (w, h)
-
         # Find the minimum and maximum x-coordinates and y-coordinates of the four points
         x_coords = [tl[0], tr[0], bl[0], br[0]]
         y_coords = [tl[1], tr[1], bl[1], br[1]]
@@ -200,69 +189,45 @@ class quad:
             self.br = (br[0] + x_adj, br[1] + y_adj)
 
     def gen_rand_quad(w, h, brush_size):
-        tryagain = True
-        while tryagain:
-            tl = (r.randint(0, w-1), r.randint(0, h-1))
-            tr = (r.randint(tl[0], w-1), r.randint(0, h-1))
-            top = tr[1] if tr[1] > tl[1] else tl[1]
-            bl = (r.randint(0, w-1), r.randint(top, h-1))
-            br = (r.randint(bl[0], w-1), r.randint(top, h-1))
-            mask = np.zeros((h, w), dtype=np.uint8)
-            poly_pts = np.array([tl,tr,bl,br], dtype=np.int32)
-            cv2.fillPoly(mask, [poly_pts], color=1)
-            tryagain = mask.sum() < brush_size
-            
-        new = quad(tl, tr, bl, br,
-                    random_rgb(),
-                     r.randint(0,255))
-        new.move_inbounds(w,h)
-        return new
-    
-    def gen_rand_quad2(w, h, brush_size):
-        while True:
-            # generate four random points
-            points = [(int(r.uniform(0, w-1)), int(r.uniform(0, h-1))) for _ in range(4)]
-            
-            # calculate the area of the shape defined by the points
-            area = 0.5 * abs((points[0][0] * points[1][1] + points[1][0] * points[2][1] +
-                            points[2][0] * points[3][1] + points[3][0] * points[0][1]) -
-                            (points[1][0] * points[0][1] + points[2][0] * points[1][1] +
-                            points[3][0] * points[2][1] + points[0][0] * points[3][1]))
-            
-            # calculate the aspect ratio of the bounding box
-            x_coords = [point[0] for point in points]
-            y_coords = [point[1] for point in points]
-            bounding_box_aspect_ratio = 1000 if max(y_coords) == min(y_coords) else (max(x_coords) - min(x_coords)) / (max(y_coords) - min(y_coords))
-            
-            # check if the area and aspect ratio meet the requirements
-            if area >= brush_size and \
-                min(bounding_box_aspect_ratio,
-                     1/bounding_box_aspect_ratio) >= 1/3:
-                new = quad(points[0],
-                            points[1],
-                            points[2],
-                            points[3],
-                    random_rgb(),
-                     r.randint(0,255))
-                new.move_inbounds(w,h)
-                return new
-                
-
-    def gen_rand_quad3(w, h, brush_size):
 
         hyp = np.sqrt(brush_size)
         hyp += r.random()*(min(w,h)-hyp)
-        
+        hyp = int(hyp)
 
-        tl = (int(r.uniform(0,w-1)), int(r.uniform(0,h-1)))
-        alpha = np.deg2rad(r.uniform(-10,50))
-        tr = (int(tl[0]+np.cos(alpha)*hyp), int(tl[1]+np.sin(alpha)*hyp))
-        beta = np.deg2rad(r.uniform(-10,50))
-        br = (int(tr[0]+np.sin(beta)*hyp), int(tr[1]+np.cos(beta)*hyp))
-        gamma = np.deg2rad(r.uniform(0,70))
-        bl = (int(br[0]-np.cos(gamma)*hyp), int(br[1]+np.sin(gamma)*hyp))
-        new = quad(tl, tr, bl, br,
-                    random_rgb(),
-                     r.randint(0,255))
-        new.move_inbounds(w,h)
+        tl = (int(r.uniform(0,w-hyp)), int(r.uniform(0,h-hyp)))
+        alpha = np.deg2rad(r.uniform(-45,45))
+        beta = np.deg2rad(r.uniform(-45,45))
+        gamma = np.deg2rad(r.uniform(-45,45))
+
+        new = quad(tl, alpha, beta, gamma, hyp, random_rgb())
         return new
+    
+
+    # def gen_rand_quad2(w, h, brush_size):
+    #     while True:
+    #         # generate four random points
+    #         points = [(int(r.uniform(0, w-1)), int(r.uniform(0, h-1))) for _ in range(4)]
+            
+    #         # calculate the area of the shape defined by the points
+    #         area = 0.5 * abs((points[0][0] * points[1][1] + points[1][0] * points[2][1] +
+    #                         points[2][0] * points[3][1] + points[3][0] * points[0][1]) -
+    #                         (points[1][0] * points[0][1] + points[2][0] * points[1][1] +
+    #                         points[3][0] * points[2][1] + points[0][0] * points[3][1]))
+            
+    #         # calculate the aspect ratio of the bounding box
+    #         x_coords = [point[0] for point in points]
+    #         y_coords = [point[1] for point in points]
+    #         bounding_box_aspect_ratio = 1000 if max(y_coords) == min(y_coords) else (max(x_coords) - min(x_coords)) / (max(y_coords) - min(y_coords))
+            
+    #         # check if the area and aspect ratio meet the requirements
+    #         if area >= brush_size and \
+    #             min(bounding_box_aspect_ratio,
+    #                  1/bounding_box_aspect_ratio) >= 1/3:
+    #             new = quad(points[0],
+    #                         points[1],
+    #                         points[2],
+    #                         points[3],
+    #                 random_rgb(),
+    #                  r.randint(0,255))
+    #             new.move_inbounds(w,h)
+    #             return new

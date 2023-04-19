@@ -19,7 +19,7 @@ class quad_manager:
         for i in range(size):
             for j in range(size):
                 if i != j:
-                    new_gen.append(new_gen[i].combine(new_gen[j]))
+                    new_gen.append(new_gen[i].combine(new_gen[j], self.w, self.h, noise=5))
         
         rand_babies = int(0.9*self.n)
         new_gen = new_gen[:-rand_babies]
@@ -29,15 +29,13 @@ class quad_manager:
         self.generation = {k:0 for k in new_gen}
 
 
-    def score_gen(self, cur: img):
+    def score_gen(self, cur: img, maximise_metric=True):
         pxlmap = cur.pixel_map
-        # st = time.time()
         for k in self.generation.keys():
             im = img(from_map=True, pxlmap=pxlmap)
             comp = k.draw(im)
             self.generation[k] = self.tgt.pix_diff(comp)
-        # print(time.time()-st)
-        self.generation = {k: v for k, v in sorted(self.generation.items(), key=lambda item: item[1])}
+        self.generation = {k: v for k, v in sorted(self.generation.items(), key=lambda item: item[1], reverse=maximise_metric)}
 
 
     def find_winner(self, n: int, cur: img):
@@ -50,7 +48,8 @@ class quad_manager:
             self.next_gen()
         
         self.score_gen(cur)
-        return list(self.generation.keys())[0]
+        winner = list(self.generation.keys())[0]
+        return winner,self.generation[winner] 
 
 
 def run_n_generations(num_quads, gen_size, gen_iter, brushsize=10, tgt_path="test.png", can="canvas"):
@@ -59,9 +58,10 @@ def run_n_generations(num_quads, gen_size, gen_iter, brushsize=10, tgt_path="tes
     cur = c.to_img()
     for i in range(num_quads):
         generation = quad_manager(gen_size, target, brushsize)
-        q = generation.find_winner(gen_iter, cur)
+        q,s_q = generation.find_winner(gen_iter, cur)
+        print(s_q)
         c.shapes.append(q)
         cur = c.to_img()
     c.save()
 
-run_n_generations(200, 1000, 15, brushsize=250, tgt_path="george.png", can='canv2')
+run_n_generations(100, 1000, 20, brushsize=250, tgt_path="george.png", can='canv2')

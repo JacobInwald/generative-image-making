@@ -11,9 +11,9 @@ def random_rgb():
     value = r.uniform(0.4, 1.0)
 
     rd, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
-    rd = int(rd * 255)
-    g = int(g * 255)
-    b = int(b * 255)
+    rd = max(int(rd * 255), 1)
+    g = max(int(g * 255), 1)
+    b = max(int(b * 255), 1)
 
     return (rd, g, b)
 
@@ -123,7 +123,7 @@ class quad:
                     self.c+(r.random()*std, r.random()*std, r.random()*std),
                     self.alpha+r.random()*std)
     
-    def combine(self, other, noise=10):
+    def combine(self, other, w, h, noise=0):
         child = quad(self.tl,self.tr,self.bl,self.br, self.c, self.alpha)
         for attr_name in ['tl', 'tr', 'bl', 'br', 'c', 'alpha']:
             if isinstance(getattr(self, attr_name), tuple):
@@ -137,6 +137,7 @@ class quad:
                 coeff = r.random()
                 attr_value = int(coeff * getattr(self, attr_name) + (1 - coeff) * getattr(other, attr_name) + noise*r.gauss(-1, 1))
                 setattr(child, attr_name, attr_value)
+        child.move_inbounds(w,h)
         return child
 
     def save(self, file):
@@ -169,7 +170,34 @@ class quad:
             self.br = d[3]
             self.c = d[4]
     
-    
+    def move_inbounds(self, w, h):
+        tl, tr, bl, br = self.tl, self.tr, self.bl, self.br
+
+        # Calculate the top-left and bottom-right corners of the bounding box
+        bb_tl = (0, 0)
+        bb_br = (w, h)
+
+        # Find the minimum and maximum x-coordinates and y-coordinates of the four points
+        x_coords = [tl[0], tr[0], bl[0], br[0]]
+        y_coords = [tl[1], tr[1], bl[1], br[1]]
+        min_x = min(x_coords)
+        max_x = max(x_coords)
+        min_y = min(y_coords)
+        max_y = max(y_coords)
+        if not(min_x>=0 and min_y>=0 and max_x <=w and max_y <=h):
+            # Calculate the width and height of the object
+            obj_w = max_x - min_x
+            obj_h = max_y - min_y
+
+            # Calculate the x-coordinate and y-coordinate adjustments
+            x_adj = -min(min_x, obj_w)
+            y_adj = -min(min_y, obj_h)
+
+            # Apply the adjustments to all four points
+            self.tl = (tl[0] + x_adj, tl[1] + y_adj)
+            self.tr = (tr[0] + x_adj, tr[1] + y_adj)
+            self.bl = (bl[0] + x_adj, bl[1] + y_adj)
+            self.br = (br[0] + x_adj, br[1] + y_adj)
 
     def gen_rand_quad(w, h, brush_size):
         tryagain = True
@@ -184,9 +212,11 @@ class quad:
             cv2.fillPoly(mask, [poly_pts], color=1)
             tryagain = mask.sum() < brush_size
             
-        return quad(tl, tr, bl, br,
+        new = quad(tl, tr, bl, br,
                     random_rgb(),
                      r.randint(0,255))
+        new.move_inbounds(w,h)
+        return new
     
     def gen_rand_quad2(w, h, brush_size):
         while True:
@@ -208,26 +238,31 @@ class quad:
             if area >= brush_size and \
                 min(bounding_box_aspect_ratio,
                      1/bounding_box_aspect_ratio) >= 1/3:
-                return quad(points[0],
+                new = quad(points[0],
                             points[1],
                             points[2],
                             points[3],
-                            random_rgb(),
-                            r.randint(0,255))
-            
+                    random_rgb(),
+                     r.randint(0,255))
+                new.move_inbounds(w,h)
+                return new
+                
 
     def gen_rand_quad3(w, h, brush_size):
 
-        hyp = np.sqrt(brush_size)+r.uniform(-1,1)*3
+        hyp = np.sqrt(brush_size)
+        hyp += r.random()*(min(w,h)-hyp)
+        
 
-        tl = (int(r.uniform(hyp,w-1)), int(r.uniform(hyp,h-1)))
+        tl = (int(r.uniform(0,w-1)), int(r.uniform(0,h-1)))
         alpha = np.deg2rad(r.uniform(-10,50))
         tr = (int(tl[0]+np.cos(alpha)*hyp), int(tl[1]+np.sin(alpha)*hyp))
         beta = np.deg2rad(r.uniform(-10,50))
         br = (int(tr[0]+np.sin(beta)*hyp), int(tr[1]+np.cos(beta)*hyp))
         gamma = np.deg2rad(r.uniform(0,70))
         bl = (int(br[0]-np.cos(gamma)*hyp), int(br[1]+np.sin(gamma)*hyp))
-        
-        return quad(tl, tr, bl, br,
+        new = quad(tl, tr, bl, br,
                     random_rgb(),
                      r.randint(0,255))
+        new.move_inbounds(w,h)
+        return new

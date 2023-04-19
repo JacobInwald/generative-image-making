@@ -1,9 +1,23 @@
-from typing import Tuple, List
-from PIL import Image, ImageDraw
+from typing import Tuple
+from PIL import Image
 import numpy as np
 import random as r
 import cv2
-from skimage.metrics import structural_similarity as ssim
+import colorsys
+
+def random_rgb():
+    hue = r.uniform(0.0, 1.0)
+    saturation = r.uniform(0.4, 1.0)
+    value = r.uniform(0.4, 1.0)
+
+    rd, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
+    rd = int(rd * 255)
+    g = int(g * 255)
+    b = int(b * 255)
+
+    return (rd, g, b)
+
+
 
 class img:
 
@@ -115,13 +129,13 @@ class quad:
             if isinstance(getattr(self, attr_name), tuple):
                 coeff = r.random()
                 attr_value = tuple(
-                    int(coeff * getattr(self, attr_name)[i] + (1 - coeff) * getattr(other, attr_name)[i] + noise*r.gauss(0, 1))
+                    int(coeff * getattr(self, attr_name)[i] + (1 - coeff) * getattr(other, attr_name)[i] + noise*r.gauss(-1, 1))
                     for i in range(len(getattr(self, attr_name)))
                 )
                 setattr(child, attr_name, attr_value)
             else:
                 coeff = r.random()
-                attr_value = int(coeff * getattr(self, attr_name) + (1 - coeff) * getattr(other, attr_name) + noise*r.gauss(0, 1))
+                attr_value = int(coeff * getattr(self, attr_name) + (1 - coeff) * getattr(other, attr_name) + noise*r.gauss(-1, 1))
                 setattr(child, attr_name, attr_value)
         return child
 
@@ -171,7 +185,7 @@ class quad:
             tryagain = mask.sum() < brush_size
             
         return quad(tl, tr, bl, br,
-                    (r.randint(0, 255), r.randint(0, 255), r.randint(0, 255)),
+                    random_rgb(),
                      r.randint(0,255))
     
     def gen_rand_quad2(w, h, brush_size):
@@ -198,7 +212,7 @@ class quad:
                             points[1],
                             points[2],
                             points[3],
-                            (r.randint(0, 255), r.randint(0, 255), r.randint(0, 255)),
+                            random_rgb(),
                             r.randint(0,255))
             
 
@@ -213,10 +227,7 @@ class quad:
         br = (int(tr[0]+np.sin(beta)*hyp), int(tr[1]+np.cos(beta)*hyp))
         gamma = np.deg2rad(r.uniform(0,70))
         bl = (int(br[0]-np.cos(gamma)*hyp), int(br[1]+np.sin(gamma)*hyp))
-        q = quad(tl, tr, bl, br,
-                    (r.randint(0, 255), r.randint(0, 255), r.randint(0, 255)),
-                     r.randint(0,255))
-        # Image.fromarray(q.draw(img(w=w,h=h))).show()
+        
         return quad(tl, tr, bl, br,
-                    (r.randint(0, 255), r.randint(0, 255), r.randint(0, 255)),
+                    random_rgb(),
                      r.randint(0,255))

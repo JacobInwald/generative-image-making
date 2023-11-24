@@ -3,20 +3,31 @@ from PIL import Image
 import numpy as np
 import random as r
 import cv2
-import colorsys
-from skimage.metrics import structural_similarity as ssim
+from enum import Enum
+import scipy
+# PIX DIFF TYPES
+class IMAGE_DIFF_METHOD(Enum):
+    psnr    = 1
+    mse     = 2
+    ncc     = 3
+    euc     = 4
+    man     = 5
+
 
 def random_rgb():
-    hue = r.uniform(0.0, 1.0)
-    saturation = r.uniform(0.4, 1.0)
-    value = r.uniform(0.4, 1.0)
-    a = r.randint(1,255)
+    # hue = r.uniform(0.0, 1.0)
+    # saturation = r.uniform(0.4, 1.0)
+    # value = r.uniform(0.4, 1.0)
+    # a = r.randint(1,255)
 
-    rd, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
-    rd = max(int(rd * 255), 1)
-    g = max(int(g * 255), 1)
-    b = max(int(b * 255), 1)
-
+    # rd, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
+    # rd = max(int(rd * 255), 1)
+    # g = max(int(g * 255), 1)
+    # b = max(int(b * 255), 1)
+    rd = int(r.uniform(1, 255))
+    g = int(r.uniform(1, 255))
+    b = int(r.uniform(1, 255))
+    a = int(r.uniform(1, 255))
     return (rd, g, b, a)
 
 
@@ -37,19 +48,34 @@ class img:
         self.height = img_rgba.height
         self.pixel_map = np.array(img_rgba)
     
-    def pix_diff(self, pxlmap, subsample=None):
+    def pix_diff(self, pxlmap, diff_type=IMAGE_DIFF_METHOD.psnr, subsample=None):
         pxlmap = pxlmap[:, :, :3]
         this_pxlmap = self.pixel_map[:, :, :3]
         if subsample is not None:
             # Subsample the pixel maps
             pxlmap = pxlmap[::subsample, ::subsample, :]
             this_pxlmap = this_pxlmap[::subsample, ::subsample, :]
+        i1 = pxlmap 
+        i2 = this_pxlmap
+
+        mse = np.mean((i1 - i2) ** 2)
 
         # Compute the mean squared error
-        mse = np.mean((pxlmap - this_pxlmap) ** 2)
-        
-        # # Compute the peak signal-to-noise ratio
-        # psnr = 10 * np.log10(255 ** 2 / mse)
+        if diff_type == IMAGE_DIFF_METHOD.mse:
+            return mse
+        # Compute the peak signal-to-noise ratio 
+        elif diff_type == IMAGE_DIFF_METHOD.psnr:
+            return 10 * np.log10(255 ** 2 / mse)
+        # Compute the normalized cross-correlation
+        elif diff_type == IMAGE_DIFF_METHOD.ncc:
+            return np.sum( (i1 - np.mean(i1)) * (i2 - np.mean(i2)) ) / ((i1.size - 1) * np.std(i1) * np.std(i2) )
+        # Compute the euclidean distance
+        elif diff_type == IMAGE_DIFF_METHOD.euc:
+            return np.sqrt(np.sum((i1 - i2)^2)) / i1.size
+        # Compute the manhattan distance
+        elif diff_type == IMAGE_DIFF_METHOD.man:
+            return np.sum(abs(i1 - i2)) / i1.size
+
         return mse
     
 
@@ -57,8 +83,8 @@ class img:
          Image.fromarray(self.pixel_map).save(self.path)
 
 
-    def save(self):
-        Image.fromarray(self.pixel_map).save(self.path)
+    def show(self):
+        Image.fromarray(self.pixel_map).show()
 
 class canvas:
 
@@ -73,7 +99,7 @@ class canvas:
         with open(self.path, 'r') as f:
             data = f.readlines()
             for i in range(0, len(data)//6):
-                q = quad()
+                q = quad_point()
                 q.read(self.path, i)
                 self.shapes.append(q)
     
@@ -121,16 +147,17 @@ class quad:
         img_arr[mask > 0] = ((overlay + self.c)/2).astype(np.uint8)
         return img_arr
     
-    def combine(self, other, noise=0):
-        coeff = r.uniform(0.25,0.75)
-        tl      = tuple( int(coeff * self.tl[i] + (1 - coeff) * other.tl[i] + noise*r.gauss(-1, 1))
+    def combine(self, other, noise=10):
+        coeff = r.gauss(0.5,0.5)
+        tl      = tuple( max(int(coeff * self.tl[i] + (1 - coeff) * other.tl[i] + noise*r.gauss(0, 1)), 0)
                             for i in range(len(self.tl)))
-        alpha   = max(min(coeff * self.alpha + (1 - coeff) * other.alpha + noise*r.gauss(-1, 1), 45), -45)
-        beta    = max(min(coeff * self.beta + (1 - coeff) * other.beta + noise*r.gauss(-1, 1), 45), -45)
-        gamma   = max(min(coeff * self.gamma + (1 - coeff) * other.gamma + noise*r.gauss(-1, 1), 45), -45)
-        hyp     = int(coeff * self.hyp + (1 - coeff) * other.hyp + noise*r.gauss(-1, 1))
-        c       = tuple( int(coeff * self.c[i] + (1 - coeff) * other.c[i] + noise*r.gauss(-1, 1))
+        alpha   = max(min(coeff * self.alpha + (1 - coeff) * other.alpha + noise*r.gauss(-1, 1), 0.5), -0.5)
+        beta    = max(min(coeff * self.beta + (1 - coeff) * other.beta + noise*r.gauss(-1, 1), 0.5), -0.5)
+        gamma   = max(min(coeff * self.gamma + (1 - coeff) * other.gamma + noise*r.gauss(-1, 1), 0.5), -0.5)
+        hyp     = max(int(coeff * self.hyp + (1 - coeff) * other.hyp + noise*r.gauss(0, 1)), 5)
+        c = tuple(min(255, max(int(coeff * self.c[i] + (1 - coeff) * other.c[i] + noise*r.gauss(0, 1)), 1))
                     for i in range(len(self.c)))
+
         return quad(tl,alpha,beta,gamma,hyp,c)
 
     def save(self, file):
@@ -198,41 +225,156 @@ class quad:
         hyp = np.sqrt(brush_size)
         hyp += r.random()*(min(w,h)-hyp)
         hyp = int(hyp)
+        hyp = min(hyp, min(w,h))
 
         tl = (int(r.uniform(0,w-hyp)), int(r.uniform(0,h-hyp)))
-        alpha = np.deg2rad(r.uniform(-45,45))
-        beta = np.deg2rad(r.uniform(-45,45))
-        gamma = np.deg2rad(r.uniform(-45,45))
+        alpha = r.uniform(-0.5,0.5)
+        beta = r.uniform(-0.5,0.5)
+        gamma = r.uniform(-0.5,0.5)
 
         new = quad(tl, alpha, beta, gamma, hyp, random_rgb())
+        # new.tr = (int(r.uniform(new.tl[0],w)), int(r.uniform(0,h)))
+        # new.bl = (int(r.uniform(0,w)), int(r.uniform(max(new.tl[1],new.tr[1]),h)))
+        # new.br = (int(r.uniform(new.tl[0],w)), int(r.uniform(max(new.tl[1],new.tr[1]),h)))
+        new.move_inbounds(w,h)
         return new
+
+
+'''
+quad class but defined with points instead of angles and lengths. 
+The points are defined in clockwise order starting from the top left point
+'''
+class quad_point:
+    
+    def __init__(self, ps:list[Tuple[int,int]]=[(1,-1),(1,1),(-1,1),(-1, -1)], c:Tuple[int,int,int,int]=(255,255,255,255)):
+        self.points = ps
+        self.c = c
+        self.tl = self.points[0]
+        self.tr = self.points[1]
+        self.br = self.points[2]
+        self.bl = self.points[3]
+
+    def combine(self, other, noise=0):
+        coeff = r.gauss(0.5,0.5)
+        points = [tuple(max(int(coeff * self.points[x][i] + (1 - coeff) * other.points[x][i] + noise*r.gauss(0, 1)), 0)
+                            for i in range(len(self.points[x])))
+                            for x in range(len(self.points))]
+        c = tuple(min(255, max(int(coeff * self.c[i] + (1 - coeff) * other.c[i] + noise*r.gauss(0, 1)), 1))
+                    for i in range(len(self.c)))
+        return quad_point(points, c)
+
+
+    def gen_rand_quad(w, h, brush_size):
+        hyp = np.sqrt(brush_size)
+        hyp += r.random()*(min(w,h)-hyp)
+        hyp = int(hyp)
+        hyp = min(hyp, min(w,h))
+
+        tl = (int(r.uniform(0,w-hyp)), int(r.uniform(0,h-hyp)))
+        points = [tl, (tl[0]+hyp, tl[1]), (tl[0]+hyp, tl[1]+hyp), (tl[0], tl[1]+hyp)]
+
+        return quad_point(points, random_rgb())
+
+
+
+    # Utility Functions   
+    #  
+    def draw(self, img: img):
+        img_arr = img.pixel_map
+        mask = np.zeros((img.height, img.width), dtype=np.uint8)
+        poly_pts = np.array(self.points, dtype=np.int32)
+        cv2.fillPoly(mask, [poly_pts], color=self.c)
+
+        overlay = img_arr[mask > 0]
+        img_arr[mask > 0] = ((overlay + self.c)/2).astype(np.uint8)
+        return img_arr
     
 
-    # def gen_rand_quad2(w, h, brush_size):
-    #     while True:
-    #         # generate four random points
-    #         points = [(int(r.uniform(0, w-1)), int(r.uniform(0, h-1))) for _ in range(4)]
-            
-    #         # calculate the area of the shape defined by the points
-    #         area = 0.5 * abs((points[0][0] * points[1][1] + points[1][0] * points[2][1] +
-    #                         points[2][0] * points[3][1] + points[3][0] * points[0][1]) -
-    #                         (points[1][0] * points[0][1] + points[2][0] * points[1][1] +
-    #                         points[3][0] * points[2][1] + points[0][0] * points[3][1]))
-            
-    #         # calculate the aspect ratio of the bounding box
-    #         x_coords = [point[0] for point in points]
-    #         y_coords = [point[1] for point in points]
-    #         bounding_box_aspect_ratio = 1000 if max(y_coords) == min(y_coords) else (max(x_coords) - min(x_coords)) / (max(y_coords) - min(y_coords))
-            
-    #         # check if the area and aspect ratio meet the requirements
-    #         if area >= brush_size and \
-    #             min(bounding_box_aspect_ratio,
-    #                  1/bounding_box_aspect_ratio) >= 1/3:
-    #             new = quad(points[0],
-    #                         points[1],
-    #                         points[2],
-    #                         points[3],
-    #                 random_rgb(),
-    #                  r.randint(0,255))
-    #             new.move_inbounds(w,h)
-    #             return new
+    def save(self, file):
+        with open(file, "a") as f:
+            f.write(str(self.points)+'\n'+
+                    str(self.c)+'\n')
+    
+
+    def read(self, file, index):
+        with open(file, "r") as f:
+            d = f.readlines()
+            d = d[index*2:(index+1)*2]
+            for s in d[0][1:-2].split('), '):
+                if s == '':
+                    continue
+                s = s.replace('(', '')
+                s = s.replace(')', '')
+                self.points.append(tuple([float(i) for i in s.split(',')]))
+            self.c = tuple([int(i) for i in d[1].replace('(', '').replace(')', '').split(', ')])
+
+
+'''
+quad class but defined with points instead of angles and lengths. 
+The points are defined in clockwise order starting from the top left point
+'''
+class quad_point_no_alpha:
+    
+    def __init__(self, ps:list[Tuple[int,int]]=[(1,-1),(1,1),(-1,1),(-1, -1)], c:Tuple[int,int,int,int]=(255,255,255,255)):
+        self.points = ps
+        self.c = c
+        self.tl = self.points[0]
+        self.tr = self.points[1]
+        self.br = self.points[2]
+        self.bl = self.points[3]
+
+    def combine(self, other, noise=0):
+        coeff = r.uniform(0.25,0.75)
+        points = [tuple(max(int(coeff * self.points[x][i] + (1 - coeff) * other.points[x][i] + noise*r.gauss(0, 1)), 0)
+                            for i in range(len(self.points[x])))
+                            for x in range(len(self.points))]
+        c = tuple(min(255, max(int(coeff * self.c[i] + (1 - coeff) * other.c[i] + noise*r.gauss(0, 1)), 1))
+                    for i in range(len(self.c)))
+        
+        return quad_point(points, c)
+
+
+    def gen_rand_quad(w, h, brush_size):
+        hyp = np.sqrt(brush_size)
+        hyp += r.random()*(min(w,h)-hyp)
+        hyp = int(hyp)
+        hyp = min(hyp, min(w,h))
+
+        tl = (int(r.uniform(0,w-hyp)), int(r.uniform(0,h-hyp)))
+        points = [tl, (tl[0]+hyp, tl[1]), (tl[0]+hyp, tl[1]+hyp), (tl[0], tl[1]+hyp)]
+        return quad_point(points, random_rgb())
+
+
+
+    # Utility Functions   
+    #  
+    def draw(self, img: img):
+        img_arr = img.pixel_map
+        mask = np.zeros((img.height, img.width), dtype=np.uint8)
+        poly_pts = np.array(self.points, dtype=np.int32)
+        (rd,g,b,_) = self.c
+        c = (rd,g,b,255)
+        cv2.fillPoly(mask, [poly_pts], color=c)
+
+        overlay = img_arr[mask > 0]
+        img_arr[mask > 0] = ((overlay + c)/2).astype(np.uint8)
+        return img_arr
+    
+
+    def save(self, file):
+        with open(file, "a") as f:
+            f.write(str(self.points)+'\n'+
+                    str(self.c)+'\n')
+    
+
+    def read(self, file, index):
+        with open(file, "r") as f:
+            d = f.readlines()
+            d = d[index*2:(index+1)*2]
+            for s in d[0][1:-2].split('), '):
+                if s == '':
+                    continue
+                s = s.replace('(', '')
+                s = s.replace(')', '')
+                self.points.append(tuple([float(i) for i in s.split(',')]))
+            self.c = tuple([int(i) for i in d[1].replace('(', '').replace(')', '').split(', ')])

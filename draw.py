@@ -49,8 +49,8 @@ class img:
         mse = np.mean((pxlmap - this_pxlmap) ** 2)
         
         # # Compute the peak signal-to-noise ratio
-        psnr = 10 * np.log10(255 ** 2 / mse)
-        return psnr
+        # psnr = 10 * np.log10(255 ** 2 / mse)
+        return mse
     
 
     def save(self):
@@ -136,18 +136,21 @@ class quad:
     def save(self, file):
         with open(file, "a") as f:
             f.write(str(self.tl)+'\n'+
-                    str(self.tr)+'\n'+
-                    str(self.bl)+'\n'+
-                    str(self.br)+'\n'+
                     str(self.c)+'\n'+
-                    str(self.alpha)+'\n')
+                    str(self.alpha)+'\n'+
+                    str(self.beta)+'\n'+
+                    str(self.gamma)+'\n'+
+                    str(self.hyp)+'\n')
     
     def read(self, file, index):
         with open(file, "r") as f:
             d = f.readlines()
             d = d[index*6:(index+1)*6]
-            self.alpha = int(d[-1].strip())
-            d = d[:-1]
+            self.hyp = int(d[-1])
+            self.gamma = float(d[-2])
+            self.beta = float(d[-3])
+            self.alpha = float(d[-4])
+            d = d[:-4]
 
             data = []
             for s in d:
@@ -158,10 +161,12 @@ class quad:
                 data.append(tuple([int(i) for i in s.split(',')]))
             d = data
             self.tl = d[0]
-            self.tr = d[1]
-            self.bl = d[2]
-            self.br = d[3]
-            self.c = d[4]
+            self.c = d[1]
+            new = quad(self.tl, self.alpha,self.beta,self.gamma,self.hyp,self.c)
+            self.tr = new.tr
+            self.bl = new.bl
+            self.br = new.br
+
     
     def move_inbounds(self, w, h):
         tl, tr, bl, br = self.tl, self.tr, self.bl, self.br

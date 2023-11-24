@@ -48,7 +48,7 @@ class quad_manager:
         t = 0 
         # ? c = canvas('winner', cur.width, cur.height)
         for i in range(n):
-            self.score_gen(cur, True)
+            self.score_gen(cur, False)
             # ! early_break[t] = list(self.generation.keys())[0:6]
             # ! t = (t+1) % len(early_break)
             # ! if all((early_break[i] == early_break[i+1] for i in range(len(early_break)-1))) \
@@ -59,7 +59,7 @@ class quad_manager:
             # ? time.sleep(1)
             self.next_gen()
 
-        self.score_gen(cur, True)
+        self.score_gen(cur, False)
         winner = list(self.generation.keys())[0]
         return winner,self.generation[winner] 
 
@@ -87,4 +87,4 @@ def run_n_generations(num_quads, gen_size, gen_iter, brushsize=10, tgt_path="tes
 # c.shapes = [c.shapes[-1]]
 # c.to_img()
 
-run_n_generations(100, 500, 30, brushsize=250, tgt_path="george.png", can='canvas')
+run_n_generations(100, 1000, 20, brushsize=250, tgt_path="george.png", can='canvas')

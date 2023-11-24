@@ -1,6 +1,5 @@
 from draw import *
 
-
 class quad_manager:
 
     def __init__(self, n, tgt, brushsize, quad_type=quad_point, metric=METRIC.psnr):
